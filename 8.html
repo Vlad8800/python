@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Memory Pair Game</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    #settings, #stats, #currentPlayer, #result {
+      margin-bottom: 15px;
+    }
+    #board {
+      display: grid;
+      gap: 5px;
+      justify-content: center;
+      margin-bottom: 15px;
+    }
+    .card {
+      width: 60px;
+      height: 60px;
+      background: #007acc;
+      color: white;
+      font-size: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    .flipped {
+      background: #eee;
+      color: black;
+      cursor: default;
+    }
+    .matched {
+      background: #8bc34a;
+      color: white;
+    }
+    #result {
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Memory Pair Game</h1>
+
+<div id="settings">
+  <label>Гравці:</label>
+  <select id="players">
+    <option value="1">1 гравець</option>
+    <option value="2">2 гравці</option>
+  </select><br><br>
+
+  <label>Ім'я гравця 1:</label>
+  <input id="player1Name" value="Гравець 1"><br>
+
+  <label>Ім'я гравця 2:</label>
+  <input id="player2Name" value="Гравець 2"><br><br>
+
+  <label>Розмір поля:</label>
+  <select id="boardSize">
+    <option value="4">4x4</option>
+    <option value="6">6x6</option>
+  </select><br><br>
+
+  <label>Складність:</label>
+  <select id="difficulty">
+    <option value="easy">Легка (3 хв)</option>
+    <option value="normal">Нормальна (2 хв)</option>
+    <option value="hard">Складна (1 хв)</option>
+  </select><br><br>
+
+  <button id="startBtn">Розпочати гру</button>
+  <button id="resetSettingsBtn">Скинути налаштування</button>
+</div>
+
+<div id="currentPlayer"></div>
+
+<div id="stats">
+  <p id="timer">Час: 00:00</p>
+  <p id="moves">Ходи: 0</p>
+</div>
+
+<div id="board"></div>
+
+<button id="restartBtn">Рестарт</button>
+
+<div id="result"></div>
+
+<script>
+(function() {
+const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+const range = n => Array.from({length: n}, (_, i) => i);
+const formatTime = secs => `${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}`;
+
+const emojiSet = ['🐶','🐱','🦊','🐻','🐼','🦁','🐯','🐵','🐸','🐙','🐠','🐞','🦋','🐢','🦄','🐝','🐬','🐳'];
+const createEmojiPairs = count => shuffle([...emojiSet].slice(0, count).concat([...emojiSet].slice(0, count)));
+
+const defaultSettings = { players: 1, boardSize: 4, difficulty: 'easy' };
+const difficultyTimes = { easy: 180, normal: 120, hard: 60 };
+let timerInterval;
+
+const renderBoard = (pairs, size, flipped, matched) => {
+  const board = document.getElementById('board');
+  board.style.gridTemplateColumns = `repeat(${size}, 60px)`;
+  board.innerHTML = '';
+
+  pairs.forEach((val, idx) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    if (matched.includes(idx)) div.classList.add('matched');
+    else if (flipped.includes(idx)) div.classList.add('flipped');
+
+    div.textContent = (flipped.includes(idx) || matched.includes(idx)) ? val : '';
+    div.dataset.index = idx;
+    board.appendChild(div);
+  });
+};
+
+const renderStats = (moves, timeLeft) => {
+  document.getElementById('moves').textContent = `Ходи: ${moves}`;
+  document.getElementById('timer').textContent = `Час: ${formatTime(timeLeft)}`;
+};
+
+const getSettings = () => ({
+  players: +document.getElementById('players').value,
+  boardSize: +document.getElementById('boardSize').value,
+  difficulty: document.getElementById('difficulty').value
+});
+
+const resetSettingsUI = () => {
+  document.getElementById('players').value = defaultSettings.players;
+  document.getElementById('boardSize').value = defaultSettings.boardSize;
+  document.getElementById('difficulty').value = defaultSettings.difficulty;
+  document.getElementById('player1Name').value = 'Гравець 1';
+  document.getElementById('player2Name').value = 'Гравець 2';
+};
+
+const updateCurrentPlayerUI = (names, currentPlayer, isTwoPlayers) => {
+  document.getElementById('currentPlayer').textContent = isTwoPlayers ? `Хід: ${names[currentPlayer]}` : '';
+};
+
+const showResult = text => {
+  document.getElementById('result').innerHTML = text;
+};
+
+const showWinner = (playerNames, playerPairs, moves, timeTaken) => {
+  let result;
+  if (playerPairs[0] > playerPairs[1]) {
+    result = `<p>Переможець: ${playerNames[0]} (Пари: ${playerPairs[0]})</p>`;
+  } else if (playerPairs[1] > playerPairs[0]) {
+    result = `<p>Переможець: ${playerNames[1]} (Пари: ${playerPairs[1]})</p>`;
+  } else {
+    result = `<p>Нічия! Обидва гравці мають по ${playerPairs[0]} пар.</p>`;
+  }
+  result += `<p>Статистика:</p>
+             <ul>
+               <li>${playerNames[0]} — Пари: ${playerPairs[0]}</li>
+               <li>${playerNames[1]} — Пари: ${playerPairs[1]}</li>
+               <li>Загальні ходи: ${moves}</li>
+               <li>Час: ${formatTime(timeTaken)}</li>
+             </ul>`;
+  showResult(result);
+};
+
+const startGame = (settings) => {
+  document.getElementById('result').innerHTML = ''; // Очистити попередній результат
+  const pairCount = (settings.boardSize ** 2) / 2;
+  const pairs = createEmojiPairs(pairCount);
+  let flipped = [];
+  let matched = [];
+  let moves = 0;
+  let timeLeft = difficultyTimes[settings.difficulty];
+
+  const playerNames = [
+    document.getElementById('player1Name').value || 'Гравець 1',
+    document.getElementById('player2Name').value || 'Гравець 2'
+  ];
+  let currentPlayer = 0;
+  const isTwoPlayers = (settings.players === 2);
+  let playerPairs = [0, 0];
+
+  updateCurrentPlayerUI(playerNames, currentPlayer, isTwoPlayers);
+  renderBoard(pairs, settings.boardSize, flipped, matched);
+  renderStats(moves, timeLeft);
+
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    renderStats(moves, timeLeft);
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      const totalTimeTaken = difficultyTimes[settings.difficulty];
+      if (isTwoPlayers) {
+        showWinner(playerNames, playerPairs, moves, totalTimeTaken);
+      } else {
+        showResult(`<p>Час вийшов!</p><p>Ви зробили ${moves} ходів.</p>`);
+      }
+    }
+  }, 1000);
+
+  document.getElementById('board').onclick = (e) => {
+    const idx = +e.target.dataset.index;
+    if (isNaN(idx) || flipped.includes(idx) || matched.includes(idx) || flipped.length === 2) return;
+
+    flipped = [...flipped, idx];
+    renderBoard(pairs, settings.boardSize, flipped, matched);
+
+    if (flipped.length === 2) {
+      moves++;
+      renderStats(moves, timeLeft);
+
+      const [i1, i2] = flipped;
+      if (pairs[i1] === pairs[i2]) {
+        matched = [...matched, i1, i2];
+        playerPairs[currentPlayer]++;
+        flipped = [];
+
+        renderBoard(pairs, settings.boardSize, flipped, matched);
+
+        if (matched.length === pairs.length) {
+          clearInterval(timerInterval);
+          const totalTimeTaken = difficultyTimes[settings.difficulty] - timeLeft;
+          if (isTwoPlayers) {
+            showWinner(playerNames, playerPairs, moves, totalTimeTaken);
+          } else {
+            showResult(`<p>Вітаємо!</p><p>Ви завершили гру за ${moves} ходів і ${formatTime(totalTimeTaken)}</p>`);
+          }
+        }
+      } else {
+        setTimeout(() => {
+          flipped = [];
+          renderBoard(pairs, settings.boardSize, flipped, matched);
+          if (isTwoPlayers) {
+            currentPlayer = (currentPlayer + 1) % 2;
+            updateCurrentPlayerUI(playerNames, currentPlayer, isTwoPlayers);
+          }
+        }, 800);
+      }
+    }
+  };
+};
+
+document.getElementById('startBtn').onclick = () => {
+  const settings = getSettings();
+  startGame(settings);
+};
+
+document.getElementById('resetSettingsBtn').onclick = () => {
+  resetSettingsUI();
+};
+
+document.getElementById('restartBtn').onclick = () => {
+  const settings = getSettings();
+  startGame(settings);
+};
+
+resetSettingsUI();
+renderStats(0, difficultyTimes[defaultSettings.difficulty]);
+
+})();
+</script>
+
+</body>
+</html>
